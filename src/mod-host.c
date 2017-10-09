@@ -469,6 +469,30 @@ static void bundle_remove(proto_t *proto)
     protocol_response("resp 0", proto);
 }
 
+static void feature_enable(proto_t *proto)
+{
+    const char* feature = proto->list[1];
+    int enabled = atoi(proto->list[2]);
+    int resp;
+
+    if (!strcmp(feature, "link"))
+        resp = effects_link_enable(enabled);
+    else if (!strcmp(feature, "processing"))
+        resp = effects_processing_enable(enabled);
+    else
+        resp = ERR_INVALID_OPERATION;
+
+    char buffer[128];
+    sprintf(buffer, "resp %i", resp);
+    protocol_response(buffer, proto);
+}
+
+static void transport(proto_t *proto)
+{
+    effects_transport(atoi(proto->list[1]), atof(proto->list[2]), atof(proto->list[3]));
+    protocol_response("resp 0", proto);
+}
+
 static void output_data_ready(proto_t *proto)
 {
     effects_output_data_ready();
@@ -539,7 +563,7 @@ static void term_signal(int sig)
     return; (void)sig;
 }
 
-static int mod_host_init(jack_client_t* client, int socket_port)
+static int mod_host_init(jack_client_t* client, int socket_port, int feedback_port)
 {
 #ifdef HAVE_FFTW335
     /* Make fftw thread-safe */
@@ -577,6 +601,8 @@ static int mod_host_init(jack_client_t* client, int socket_port)
     protocol_add_command(SAVE_COMMANDS, save_cb);
     protocol_add_command(BUNDLE_ADD, bundle_add);
     protocol_add_command(BUNDLE_REMOVE, bundle_remove);
+    protocol_add_command(FEATURE_ENABLE, feature_enable);
+    protocol_add_command(TRANSPORT, transport);
     protocol_add_command(OUTPUT_DATA_READY, output_data_ready);
 
     /* skip help and quit for internal client */
@@ -591,7 +617,7 @@ static int mod_host_init(jack_client_t* client, int socket_port)
         return -1;
 
     /* Setup the socket */
-    if (socket_start(socket_port, SOCKET_MSG_BUFFER_SIZE) < 0)
+    if (socket_start(socket_port, feedback_port, SOCKET_MSG_BUFFER_SIZE) < 0)
         return -1;
 
     socket_set_receive_cb(protocol_parse);
@@ -623,6 +649,7 @@ int main(int argc, char **argv)
         {"nofork", no_argument, 0, 'n'},
         {"verbose", no_argument, 0, 'v'},
         {"socket-port", required_argument, 0, 'p'},
+        {"feedback-port", required_argument, 0, 'f'},
         {"interactive", no_argument, 0, 'i'},
         {"version", no_argument, 0, 'V'},
         {"help", no_argument, 0, 'h'},
@@ -632,8 +659,9 @@ int main(int argc, char **argv)
     int opt, opt_index = 0;
 
     /* parse command line options */
-    int nofork = 0, verbose = 0, socket_port = SOCKET_DEFAULT_PORT, interactive = 0;
-    while ((opt = getopt_long(argc, argv, "nvp:iVh", long_options, &opt_index)) != -1)
+    int nofork = 0, verbose = 0,  interactive = 0;
+    int socket_port = SOCKET_DEFAULT_PORT, feedback_port = 0;
+    while ((opt = getopt_long(argc, argv, "nvp:f:iVh", long_options, &opt_index)) != -1)
     {
         switch (opt)
         {
@@ -648,6 +676,10 @@ int main(int argc, char **argv)
 
             case 'p':
                 socket_port = atoi(optarg);
+                break;
+
+            case 'f':
+                feedback_port = atoi(optarg);
                 break;
 
             case 'i':
@@ -669,6 +701,7 @@ int main(int argc, char **argv)
                     "Usage: %s [-vih] [-p <port>]\n"
                     "  -v, --verbose                  verbose messages\n"
                     "  -p, --socket-port=<port>       socket port definition\n"
+                    "  -f, --feedback-port=<port>     feedback port definition\n"
                     "  -i, --interactive              interactive mode\n"
                     "  -V, --version                  print program version and exit\n"
                     "  -h, --help                     print this help and exit\n",
@@ -701,13 +734,13 @@ int main(int argc, char **argv)
         }
     }
 
-    if (mod_host_init(NULL, socket_port) != 0)
+    if (mod_host_init(NULL, socket_port, feedback_port) != 0)
     {
         exit(EXIT_FAILURE);
         return 1;
     }
 
-    /* Interactice mode */
+    /* Interactive mode */
     if (interactive)
     {
         interactive_mode();
@@ -752,7 +785,7 @@ int jack_initialize(jack_client_t* client, const char* load_init)
     if (load_init != NULL && load_init[0] != '\0')
         socket_port = atoi(load_init);
 
-    if (mod_host_init(client, socket_port) != 0)
+    if (mod_host_init(client, socket_port, socket_port+1) != 0)
         return 1;
 
     running = 1;

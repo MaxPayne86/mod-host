@@ -1,8 +1,9 @@
 #!/usr/bin/python
 
 import socket, time, subprocess, os, shutil
-sock  = socket.socket()
-sockr = socket.socket()
+
+global sock
+sock = socket.socket()
 
 env = os.environ.copy()
 env['LV2_PATH'] = "/usr/lib/lv2:/tmp/lv2path"
@@ -40,15 +41,13 @@ egamp_preset = """@prefix atom: <http://lv2plug.in/ns/ext/atom#> .
 """
 
 def connect_socket():
+    global sock
     sock.connect(('localhost', 5555))
     sock.settimeout(0.2)
-    sockr.connect(('localhost', 5556))
-    sockr.settimeout(0.2)
 
 def reset_socket():
-    global sock, sockr
-    sock  = socket.socket()
-    sockr = socket.socket()
+    global sock
+    sock = socket.socket()
 
 jack = None
 host = None
@@ -56,7 +55,7 @@ host = None
 def run_jack():
     global jack
     if jack is None:
-        jack_is_running = os.system("ps auxw | grep jackd | grep -v grep")
+        jack_is_running = os.system("ps auxw | grep -v jackdbus | grep jackd | grep -v grep")
         assert jack_is_running != 0, "jackd is already running, please stop it before running the tests"
         jack = subprocess.Popen(["jackd", "-ddummy"], env=env)
         assert jack.poll() == None

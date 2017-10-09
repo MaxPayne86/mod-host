@@ -103,7 +103,7 @@ static int g_clientfd, g_fbclientfd;
  *        We don't have time to investigate this further right now, so leave a note here for later.
  *        Using SO_REUSEPORT with -1 as 'backlog' seems to work, needs testing on MOD Duo later on.
  */
-#if defined(__ARM_ARCH_7A__) || ! defined(SO_REUSEPORT)
+#if defined(__MOD_DEVICES__) || ! defined(SO_REUSEPORT)
 #define MOD_SOCKET_FLAGS   SO_REUSEADDR
 #define MOD_SOCKET_BACKLOG 0
 #else
@@ -111,52 +111,81 @@ static int g_clientfd, g_fbclientfd;
 #define MOD_SOCKET_BACKLOG -1
 #endif
 
-int socket_start(int port, int buffer_size)
+int socket_start(int socket_port, int feedback_port, int buffer_size)
 {
-    g_serverfd = socket(AF_INET, SOCK_STREAM, 0);
-    g_fbserverfd = socket(AF_INET, SOCK_STREAM, 0);
     g_clientfd = g_fbclientfd = -1;
+    g_serverfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    if (g_serverfd < 0 || g_fbserverfd < 0)
+    if (g_serverfd < 0)
     {
         perror("socket error");
         return -1;
     }
 
+    if (feedback_port != 0)
+    {
+        g_fbserverfd = socket(AF_INET, SOCK_STREAM, 0);
+
+        if (g_fbserverfd < 0)
+        {
+            perror("socket error");
+            return -1;
+        }
+    }
+    else
+    {
+        g_fbserverfd = -1;
+    }
+
     /* Allow the reuse of the socket address */
     int value = 1;
     setsockopt(g_serverfd, SOL_SOCKET, MOD_SOCKET_FLAGS, &value, sizeof(value));
-    setsockopt(g_fbserverfd, SOL_SOCKET, MOD_SOCKET_FLAGS, &value, sizeof(value));
+    if (feedback_port != 0)
+        setsockopt(g_fbserverfd, SOL_SOCKET, MOD_SOCKET_FLAGS, &value, sizeof(value));
 
     /* increase socket size */
     value = 131071;
     setsockopt(g_serverfd, SOL_SOCKET, SO_RCVBUF, &value, sizeof(value));
-    setsockopt(g_fbserverfd, SOL_SOCKET, SO_RCVBUF, &value, sizeof(value));
+    if (feedback_port != 0)
+        setsockopt(g_fbserverfd, SOL_SOCKET, SO_RCVBUF, &value, sizeof(value));
 
     /* Startup the socket struct */
     struct sockaddr_in serv_addr;
     memset((char *) &serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
+#ifdef __MOD_DEVICES__
+    serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+#else
+    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+#endif
 
     /* Try assign the server address */
-    serv_addr.sin_port = htons(port);
+    serv_addr.sin_port = htons(socket_port);
     if (bind(g_serverfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
     {
         perror("bind error");
         return -1;
     }
 
-    /* Try assign the receiver address */
-    serv_addr.sin_port = htons(port+1);
-    if (bind(g_fbserverfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+    if (feedback_port != 0)
     {
-        perror("bind error");
-        return -1;
+        /* Try assign the receiver address */
+        serv_addr.sin_port = htons(feedback_port);
+        if (bind(g_fbserverfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+        {
+            perror("bind error");
+            return -1;
+        }
     }
 
     /* Start listen the sockets */
-    if (listen(g_serverfd, MOD_SOCKET_BACKLOG) < 0 || listen(g_fbserverfd, MOD_SOCKET_BACKLOG) < 0)
+    if (listen(g_serverfd, MOD_SOCKET_BACKLOG) < 0)
+    {
+        perror("listen error");
+        return -1;
+    }
+
+    if (feedback_port != 0 && listen(g_fbserverfd, MOD_SOCKET_BACKLOG) < 0)
     {
         perror("listen error");
         return -1;
@@ -175,19 +204,24 @@ void socket_finish(void)
         return;
 
     // make local copies so that we can invalidate these vars first
-    int serverfd   = g_serverfd;
-    int fbserverfd = g_fbserverfd;
+    const int serverfd   = g_serverfd;
+    const int fbserverfd = g_fbserverfd;
     g_serverfd = g_fbserverfd = -1;
 
     // shutdown clients, but don't close them
+    if (g_fbclientfd != -1)
+        shutdown(g_fbclientfd, SHUT_RDWR);
     shutdown(g_clientfd, SHUT_RDWR);
-    shutdown(g_fbclientfd, SHUT_RDWR);
 
     // shutdown and close servers
+    if (fbserverfd != -1)
+    {
+        shutdown(fbserverfd, SHUT_RDWR);
+        close(fbserverfd);
+    }
+
     shutdown(serverfd, SHUT_RDWR);
-    shutdown(fbserverfd, SHUT_RDWR);
     close(serverfd);
-    close(fbserverfd);
 }
 
 
@@ -252,17 +286,24 @@ void socket_run(int exit_on_failure)
         exit(EXIT_FAILURE);
     }
 
-    fbclientfd = accept(g_fbserverfd, (struct sockaddr *) &cli_addr, &clilen);
-    if (fbclientfd < 0)
+    if (g_fbserverfd != -1)
     {
-        free(buffer);
-        close(clientfd);
+        fbclientfd = accept(g_fbserverfd, (struct sockaddr *) &cli_addr, &clilen);
+        if (fbclientfd < 0)
+        {
+            free(buffer);
+            close(clientfd);
 
-        if (! exit_on_failure)
-            return;
+            if (! exit_on_failure)
+                return;
 
-        perror("accept error");
-        exit(EXIT_FAILURE);
+            perror("accept error");
+            exit(EXIT_FAILURE);
+        }
+    }
+    else
+    {
+        fbclientfd = -1;
     }
 
     g_clientfd = clientfd;
@@ -294,8 +335,11 @@ void socket_run(int exit_on_failure)
         }
     }
 
-    g_fbclientfd = -1;
-    close(fbclientfd);
+    if (fbclientfd != -1)
+    {
+        g_fbclientfd = -1;
+        close(fbclientfd);
+    }
 
     g_clientfd = -1;
     close(clientfd);
