@@ -6,12 +6,12 @@ import subprocess as sp
 # get mod-host pid
 pid = sp.check_output("pgrep mod-host; exit 0", shell=True)
 if pid == '':
-    print 'mod-host is not running'
+    print('mod-host is not running')
     exit(0)
 
 def check_mod_host():
     if sp.check_output("pgrep mod-host; exit 0", shell=True) != pid:
-        print 'mod-host died'
+        print('mod-host died')
         exit(1)
 
 # setup socket
@@ -20,12 +20,12 @@ s.connect(('localhost', 5555))
 s.settimeout(5)
 
 def send_command(command):
-    s.send(command)
-    print command
+    print(command)
+    s.send(str.encode(command))
 
     try:
         resp = s.recv(1024)
-        print resp
+        print(resp)
         return True
 
     except Exception:
@@ -33,7 +33,8 @@ def send_command(command):
 
 
 # get plugins list
-plugins = sp.check_output('lv2ls').split('\n');
+plugins = sp.check_output('lv2ls',universal_newlines=True).split('\n');
+print(plugins)
 
 # add and remove the effects
 for i, plugin in enumerate(plugins):
