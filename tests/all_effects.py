@@ -5,7 +5,7 @@ import subprocess as sp
 
 # get mod-host pid
 pid = sp.check_output("pgrep mod-host; exit 0", shell=True)
-if pid == '':
+if pid == b'':
     print('mod-host is not running')
     exit(0)
 
@@ -20,7 +20,7 @@ s.connect(('localhost', 5555))
 s.settimeout(5)
 
 def send_command(command):
-    print(command)
+    print('sent:', command)
     s.send(str.encode(command))
 
     try:
