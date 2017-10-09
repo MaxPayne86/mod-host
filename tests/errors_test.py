@@ -1,27 +1,32 @@
 #!/usr/bin/env python
+# Description: this is a robustness test for mod-host
+# server. Many wrong commands are sent to mod-host via socket
+# connection: after every wrong command, we check that the mod-host
+# is still running and somewhat hadled the wrong commands, hopefully discarding them.
+# No error code is readed back from the mod-host server.
 
 import socket, time
 import subprocess as sp
 
 # get mod-host pid
 pid = sp.check_output("pgrep mod-host; exit 0", shell=True)
-if pid == '':
-    print 'mod-host is not running'
+if pid == b'':
+    print('mod-host is not running')
     exit(0)
 
 # setup socket
 s = socket.socket()
 s.connect(('localhost', 5555))
-s.settimeout(0.1)
+s.settimeout(0.5)
 
 
 def send_command(command):
-    s.send(command)
-    print 'sent:', command
+    print('sent:', command)
+    s.send(str.encode(command))
 
     try:
         resp = s.recv(1024)
-        if resp: print 'resp:', resp
+        if resp: print('resp:'), resp
         return True
 
     except Exception:
@@ -30,104 +35,104 @@ def send_command(command):
 
 def check_mod_host():
     if sp.check_output("pgrep mod-host; exit 0", shell=True) == pid:
-        print 'test OK'
+        print('test OK')
         print
     else:
-        print 'test FAIL'
+        print('test FAIL')
         exit(1)
 
-print 'test: invalid command'
+print('test: invalid command')
 send_command('non_valid_command %s %i')
 check_mod_host()
 
-print 'test: invalid number of parameters (few)'
+print('test: invalid number of parameters (few)')
 send_command('add 1')
 check_mod_host()
 
-print 'test: invalid number of parameters (many)'
+print('test: invalid number of parameters (many)')
 send_command('add 1 2 3')
 check_mod_host()
 
-print 'test: null command'
+print('test: null command')
 send_command('')
 check_mod_host()
 
-print 'test: add invalid effect'
+print('test: add invalid effect')
 send_command('add XXXX 0')
 check_mod_host()
 
-print 'test: add effect with invalid instance (string on instance field)'
+print('test: add effect with invalid instance (string on instance field)')
 send_command('add http://lv2plug.in/plugins/eg-amp XXX')
 check_mod_host()
 
-print 'test: add effect with invalid instance (string on instance field, again)'
+print('test: add effect with invalid instance (string on instance field, again)')
 send_command('add http://lv2plug.in/plugins/eg-amp XXX')
 check_mod_host()
 
-print 'test: add effect with invalid instance (big number)'
+print('test: add effect with invalid instance (big number)')
 send_command('add http://lv2plug.in/plugins/eg-amp 999999')
 check_mod_host()
 
-print 'test: add effect with invalid instance (negative number)'
+print('test: add effect with invalid instance (negative number)')
 send_command('add http://lv2plug.in/plugins/eg-amp -5')
 check_mod_host()
 
-print 'test: add effect with valid instance'
+print('test: add effect with valid instance')
 send_command('add http://lv2plug.in/plugins/eg-amp 100')
 check_mod_host()
 
-print 'test: remove invalid instance (string on instance field)'
+print('test: remove invalid instance (string on instance field)')
 send_command('remove XXX')
 check_mod_host()
 
-print 'test: remove invalid instance (on valid range but not instantiated)'
+print('test: remove invalid instance (on valid range but not instantiated)')
 send_command('remove 15')
 check_mod_host()
 
-print 'test: remove invalid instance (big number)'
+print('test: remove invalid instance (big number)')
 send_command('remove 999999')
 check_mod_host()
 
-print 'test: remove invalid instance (negative number)'
+print('test: remove invalid instance (negative number)')
 send_command('remove -10')
 check_mod_host()
 
-print 'test: connect invalid effects'
+print('test: connect invalid effects')
 send_command('connect ping pong')
 check_mod_host()
 
-print 'test: disconnect invalid effects'
+print('test: disconnect invalid effects')
 send_command('disconnect ping pong')
 check_mod_host()
 
-print 'test: bypass invalid instance'
+print('test: bypass invalid instance')
 send_command('bypass XXX 0')
 check_mod_host()
 
-print 'test: bypass invalid value'
+print('test: bypass invalid value')
 send_command('bypass 100 XXXX')
 check_mod_host()
 
-print 'test: param_set invalid param name'
+print('test: param_set invalid param name')
 send_command('param_set 100 XXXX 0.5')
 check_mod_host()
 
-print 'test: param_set invalid value (string)'
+print('test: param_set invalid value (string)')
 send_command('param_set 100 gain XXXX')
 check_mod_host()
 
-print 'test: param_set invalid value (out of range, above)'
+print('test: param_set invalid value (out of range, above)')
 send_command('param_set 100 gain 500.0')
 check_mod_host()
 
-print 'test: param_set invalid value (out of range, bellow)'
+print('test: param_set invalid value (out of range, bellow)')
 send_command('param_set 100 gain -500.0')
 check_mod_host()
 
-print 'test: param_get invalid param name'
+print('test: param_get invalid param name')
 send_command('param_get 100 XXXX')
 check_mod_host()
 
-print 'test: remove valid effect'
+print('test: remove valid effect')
 send_command('remove 100')
 check_mod_host()

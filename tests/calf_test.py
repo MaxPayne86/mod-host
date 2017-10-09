@@ -5,14 +5,14 @@ import subprocess as sp
 
 # get mod-host pid
 pid = sp.check_output("pgrep mod-host; exit 0", shell=True)
-if pid == '':
+if pid == b'':
     print 'mod-host is not running'
     exit(0)
 
 # setup socket
 s = socket.socket()
 s.connect(('localhost', 5555))
-s.settimeout(5)
+s.settimeout(0.5)
 
 def check_mod_host():
     if sp.check_output("pgrep mod-host; exit 0", shell=True) != pid:

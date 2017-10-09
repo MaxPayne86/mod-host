@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# Description: in this test we scan all the plugin available
+# and we try to load them on mod-host one-by-one. This takes time!
 
 import socket, time
 import subprocess as sp

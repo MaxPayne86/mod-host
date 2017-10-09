@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# Description: in this test we load an lv2 plugin to mod-host
+# and we change slowly one parameter so the result should be audible
 
 import socket, time
 import subprocess as sp
